@@ -94,6 +94,8 @@ public class SmartDialPrefix {
         String locale = context.getResources().getConfiguration().locale.getCountry();
         if (locale.equals("RU")) {
             mMap = new RussianSmartDialMap();
+        } else if (locale.equals("CN")){
+            mMap = new ChinaSmartDialMap();
         } else {
             mMap = new LatinSmartDialMap();
         }
@@ -605,6 +607,7 @@ public class SmartDialPrefix {
         result.add("TC"); // Turks and Caicos Islands
         result.add("VI"); // U.S. Virgin Islands
         result.add("RU"); // Russia
+        result.add("CN"); // China
         return result;
     }
 
