@@ -1,24 +1,14 @@
-/*
- * Copyright (C) 2014 The CyanogenMod Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.android.dialer.dialpad;
 
-import java.util.ArrayList;
+import com.android.providers.contacts.HanziToPinyin;
 
-public class RussianSmartDialMap implements SmartDialMap {
+import android.text.TextUtils;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+
+public class ChineseSmartDialMap implements SmartDialMap {
 
     private static final char[] LATIN_LETTERS_TO_DIGITS = {
         '2', '2', '2', // A,B,C -> 2
@@ -31,20 +21,9 @@ public class RussianSmartDialMap implements SmartDialMap {
         '9', '9', '9', '9' // W,X,Y,Z -> 9
     };
 
-    private static final char[] RUSSIAN_LETTERS_TO_DIGITS = {
-        '2', '2', '2', '2', // абвг -> 2
-        '3', '3', '3', '3', // дежз -> 3
-        '4', '4', '4', '4', // ийкл -> 4
-        '5', '5', '5', '5', // мноп -> 5
-        '6', '6', '6', '6', // рсту -> 6
-        '7', '7', '7', '7', // фхцч -> 7
-        '8', '8', '8', '8', // шщъы -> 8
-        '9', '9', '9', '9'  // ьэюя -> 9
-    };
-
     @Override
     public boolean isValidDialpadAlphabeticChar(char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'а' && ch <= 'я');
+        return (ch >= 'a' && ch <= 'z');
     }
 
     @Override
@@ -415,40 +394,6 @@ public class RussianSmartDialMap implements SmartDialMap {
             case 'X': return 'x';
             case 'Y': return 'y';
             case 'Z': return 'z';
-            case 'А': return 'а';
-            case 'Б': return 'б';
-            case 'В': return 'в';
-            case 'Г': return 'г';
-            case 'Д': return 'д';
-            case 'Е': return 'е';
-            case 'ё': return 'е';
-            case 'Ё': return 'е';
-            case 'Ж': return 'ж';
-            case 'З': return 'з';
-            case 'И': return 'и';
-            case 'Й': return 'й';
-            case 'К': return 'к';
-            case 'Л': return 'л';
-            case 'М': return 'м';
-            case 'Н': return 'н';
-            case 'О': return 'о';
-            case 'П': return 'п';
-            case 'Р': return 'р';
-            case 'С': return 'с';
-            case 'Т': return 'т';
-            case 'У': return 'у';
-            case 'Ф': return 'ф';
-            case 'Х': return 'х';
-            case 'Ц': return 'ц';
-            case 'Ч': return 'ч';
-            case 'Ш': return 'ш';
-            case 'Щ': return 'щ';
-            case 'Ъ': return 'ъ';
-            case 'Ы': return 'ы';
-            case 'Ь': return 'ь';
-            case 'Э': return 'э';
-            case 'Ю': return 'ю';
-            case 'Я': return 'я';
             default:
                 return ch;
         }
@@ -460,8 +405,6 @@ public class RussianSmartDialMap implements SmartDialMap {
             return (byte) (ch - '0');
         } else if (ch >= 'a' && ch <= 'z') {
             return (byte) (LATIN_LETTERS_TO_DIGITS[ch - 'a'] - '0');
-        } else if (ch >= 'а' && ch <= 'я') {
-            return (byte) (RUSSIAN_LETTERS_TO_DIGITS[ch - 'а'] - '0');
         } else {
             return -1;
         }
@@ -472,20 +415,91 @@ public class RussianSmartDialMap implements SmartDialMap {
         if (ch >= 'a' && ch <= 'z') {
             return LATIN_LETTERS_TO_DIGITS[ch - 'a'];
         }
-        if (ch >= 'а' && ch <= 'я') {
-            return RUSSIAN_LETTERS_TO_DIGITS[ch - 'а'];
-        }
         return ch;
+    }
+
+    /*
+     * Generates a space delimited string of pinyins
+     */
+    private String tokenizeToPinyins(String displayName) {
+        HanziToPinyin hanziToPinyin = HanziToPinyin.getInstance();
+        ArrayList<HanziToPinyin.Token> tokens = hanziToPinyin.get(displayName);
+        ArrayList<String> pinyins = new ArrayList<String>();
+        for (HanziToPinyin.Token token : tokens) {
+            if (token.type != HanziToPinyin.Token.PINYIN) {
+                return displayName;
+            } else {
+                pinyins.add(token.target);
+            }
+        }
+        return TextUtils.join(" ", pinyins);
     }
 
     @Override
     public String transliterateName(String index) {
-        return index;
+        return tokenizeToPinyins(index);
     }
 
+    /*
+     * Uses the default matching logic on the pinyin name and attempts to map the match positions
+     * back to the original display name
+     */
     @Override
     public boolean matchesCombination(SmartDialNameMatcher smartDialNameMatcher,
             String displayName, String query, ArrayList<SmartDialMatchPosition> matchList) {
-        return smartDialNameMatcher.matchesCombination(displayName, query, matchList);
+
+        String pinyinName = tokenizeToPinyins(displayName);
+
+        ArrayList<SmartDialMatchPosition> computedMatchList = new ArrayList<SmartDialMatchPosition>();
+        boolean matches = smartDialNameMatcher.matchesCombination(pinyinName, query, computedMatchList);
+        if (!matches)
+            return false;
+
+        // name was translated to pinyin before matching.  attempt to map the match positions
+        // back to the original display string
+        if (!displayName.equals(pinyinName)) {
+
+            // construct an array that maps each character of the pinyin name back to the index of
+            // the hanzi token from which it came
+            // For example, if:
+            //  displayName = 红霞李
+            //  pinyinName =  "hong xia li"
+            // then:
+            //  pinyinMapping = 0,0,0,0,-1,1,1,1,-1,2,2
+            int[] pinyinMapping = new int[pinyinName.length()];
+            int curToken = 0;
+            for (int i=0; i < pinyinName.length(); ++i) {
+                char c = pinyinName.charAt(i);
+                if (c == ' ') {
+                    ++curToken;
+                    pinyinMapping[i] = -1;
+                }
+                else {
+                    pinyinMapping[i] = curToken;
+                }
+            }
+
+            // calculate unique hanzi characters that are matched
+            Set<Integer> positionsToHighlight = new HashSet<Integer>();
+            for (SmartDialMatchPosition matchPosition : computedMatchList) {
+                for (int pos = matchPosition.start; pos < matchPosition.end; ++pos) {
+                    int mappedPos = pinyinMapping[pos];
+                    if (mappedPos >= 0)
+                        positionsToHighlight.add(mappedPos);
+                }
+            }
+
+            // reset computed matches
+            computedMatchList = new ArrayList<SmartDialMatchPosition>();
+            for (int matchPos : positionsToHighlight) {
+                // use one object per position for simplicity
+                computedMatchList.add(new SmartDialMatchPosition(matchPos, matchPos+1));
+            }
+        }
+
+        matchList.addAll(computedMatchList);
+        return true;
     }
+
+
 }
